@@ -15,7 +15,9 @@ import (
 // files (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/profiles/...), the exact
 // same chain every other AWS-touching tool in this toolchain already
 // relies on. Field names match terraform-null-tagger's `database`
-// variable exactly (engine, engine_version, size, multi_az, storage_gb).
+// variable (engine, engine_version, size, multi_az). storage_gb is
+// deliberately absent - RDS storage autoscaling changes AllocatedStorage
+// outside Terraform, so reading it here would cause a perpetual plan diff.
 type awsRDSDataSource struct{}
 
 func NewAWSRDSDataSource() datasource.DataSource {
@@ -28,7 +30,6 @@ type awsRDSDataSourceModel struct {
 	EngineVersion        types.String `tfsdk:"engine_version"`
 	Size                 types.String `tfsdk:"size"`
 	MultiAZ              types.Bool   `tfsdk:"multi_az"`
-	StorageGB            types.Int64  `tfsdk:"storage_gb"`
 }
 
 func (d *awsRDSDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -47,7 +48,6 @@ func (d *awsRDSDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 			"engine_version": schema.StringAttribute{Computed: true},
 			"size":           schema.StringAttribute{Computed: true, Description: "DB instance class, e.g. db.t3.micro."},
 			"multi_az":       schema.BoolAttribute{Computed: true},
-			"storage_gb":     schema.Int64Attribute{Computed: true},
 		},
 	}
 }
@@ -87,9 +87,6 @@ func (d *awsRDSDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	data.Size = types.StringPointerValue(instance.DBInstanceClass)
 	if instance.MultiAZ != nil {
 		data.MultiAZ = types.BoolValue(*instance.MultiAZ)
-	}
-	if instance.AllocatedStorage != nil {
-		data.StorageGB = types.Int64Value(int64(*instance.AllocatedStorage))
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

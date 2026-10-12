@@ -4,6 +4,7 @@ go 1.27.0
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.9
+	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.78.4
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.338.4
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.63.3
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.112.1
