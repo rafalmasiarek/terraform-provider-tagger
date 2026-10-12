@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,11 +17,7 @@ import (
 
 // A Terraform provider has no implicit way to know which specific calling
 // module instantiated one of its data sources - the caller must pass its
-// own path.module explicitly. From there, this reads Terraform's own
-// internal (undocumented, but stable in practice since 0.11+)
-// .terraform/modules/modules.json to recover that module's source/version,
-// the same way the earlier bash-script approach did, but with real error
-// handling instead of a brittle shell pipeline.
+// own path.module explicitly.
 type originDataSource struct{}
 
 func NewOriginDataSource() datasource.DataSource {
@@ -48,7 +45,7 @@ func (d *originDataSource) Metadata(ctx context.Context, req datasource.Metadata
 
 func (d *originDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Best-effort detection of a calling module's own source/version, read back from Terraform's internal .terraform/modules/modules.json. Never fails the plan - a detection miss yields \"unknown\" values, since this is optional metadata, not a hard dependency.",
+		Description: "Best-effort detection of a calling module's own source/release version. Never fails the plan - a detection miss yields \"unknown\" values, since this is optional metadata, not a hard dependency.",
 		Attributes: map[string]schema.Attribute{
 			"module_path": schema.StringAttribute{
 				Required:    true,
@@ -56,11 +53,11 @@ func (d *originDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 			},
 			"source": schema.StringAttribute{
 				Computed:    true,
-				Description: "The calling module's source, e.g. \"github.com/rafalmasiarek/terraform-aws-vpc\". \"unknown\" if it could not be determined.",
+				Description: "The calling module's source, e.g. \"https://github.com/rafalmasiarek/terraform-aws-vpc.git\". \"unknown\" if it could not be determined.",
 			},
 			"version": schema.StringAttribute{
 				Computed:    true,
-				Description: "The calling module's resolved version/ref. \"unknown\" if it could not be determined (always the case for local path sources, which carry no version).",
+				Description: "The calling module's release version - an actual git tag if one is reachable, otherwise the ?ref= the caller wrote when sourcing the module, otherwise a bare commit SHA as a last resort. \"unknown\" if none of these were available (e.g. a local path source).",
 			},
 		},
 	}
@@ -82,20 +79,22 @@ func (d *originDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 }
 
 // detectOrigin never returns an error - any failure falls back to
-// "unknown" for both values, since this is best-effort metadata that must
-// never break a real plan/apply.
+// "unknown", since this is best-effort metadata that must never break a
+// real plan/apply.
 //
-// Tries git first: for a git-sourced module, path.module IS the actual
-// checked-out repo directory (Terraform's module installer leaves .git
-// intact), so `git remote get-url origin` + `git describe` there is more
-// precise than modules.json - it reports the exact commit actually
-// checked out, not just whatever ref string the caller wrote, and it also
-// works for the root module itself (which modules.json never describes
-// meaningfully). modules.json is only consulted as a fallback, for cases
-// git can't help with (local path sources outside any repo, registry
-// sources served as plain tarballs with no .git at all, or git missing
-// from PATH - which would be surprising, since Terraform itself already
-// shells out to git to fetch git-sourced modules in the first place).
+// We resolve dependencies by release version, not by whichever commit
+// happens to be checked out - so version precedence is:
+//  1. An actual reachable git tag (git describe --tags, no --always - a
+//     real release version, not a synthesized one).
+//  2. The ?ref= the caller wrote in modules.json's Source string when
+//     sourcing the module - also a real release version when a tag ref
+//     was used, just not confirmed reachable from HEAD.
+//  3. A bare commit SHA, only as an absolute last resort.
+//
+// source is resolved independently: git's own remote origin URL if
+// available (for a git-sourced module, path.module IS the actual
+// checked-out repo directory - Terraform's module installer leaves .git
+// intact), falling back to modules.json's Source string otherwise.
 func detectOrigin(ctx context.Context, modulePath string) (source string, version string) {
 	const unknown = "unknown"
 
@@ -113,69 +112,52 @@ func detectOrigin(ctx context.Context, modulePath string) (source string, versio
 		return unknown, unknown
 	}
 
-	if src, ver, ok := detectOriginViaGit(ctx, absModulePath); ok {
-		return src, ver
+	jsonSource, jsonRef, jsonOK := refFromModulesJSON(root, absModulePath)
+
+	source = unknown
+	if remote, ok := gitRemoteOrigin(ctx, absModulePath); ok {
+		source = remote
+	} else if jsonOK && jsonSource != "" {
+		source = jsonSource
 	}
 
-	modulesJSONPath, ok := findModulesJSON(root)
-	if !ok {
-		return unknown, unknown
+	version = unknown
+	if tag, ok := gitTagVersion(ctx, absModulePath); ok {
+		version = tag
+	} else if jsonOK && jsonRef != "" {
+		version = jsonRef
+	} else if sha, ok := gitShortSHA(ctx, absModulePath); ok {
+		version = sha
 	}
 
-	raw, err := os.ReadFile(modulesJSONPath)
-	if err != nil {
-		return unknown, unknown
-	}
-
-	var parsed modulesJSON
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return unknown, unknown
-	}
-
-	for _, m := range parsed.Modules {
-		dir := m.Dir
-		if !filepath.IsAbs(dir) {
-			dir = filepath.Join(root, dir)
-		}
-		absDir, err := filepath.Abs(dir)
-		if err != nil {
-			continue
-		}
-		if absDir == absModulePath {
-			src, ver := m.Source, m.Version
-			if src == "" {
-				src = unknown
-			}
-			if ver == "" {
-				ver = unknown
-			}
-			return src, ver
-		}
-	}
-
-	return unknown, unknown
+	return source, version
 }
 
-// detectOriginViaGit reports ok=false (never an error) if dir isn't inside
-// a git repo, git isn't on PATH, or either command fails/times out - any
-// of which simply means "try the modules.json fallback instead".
-func detectOriginViaGit(ctx context.Context, dir string) (source string, version string, ok bool) {
-	remote, err := runGit(ctx, dir, "remote", "get-url", "origin")
-	if err != nil || remote == "" {
-		return "", "", false
+func gitRemoteOrigin(ctx context.Context, dir string) (string, bool) {
+	out, err := runGit(ctx, dir, "remote", "get-url", "origin")
+	if err != nil || out == "" {
+		return "", false
 	}
+	return out, true
+}
 
-	// --always falls back to a short commit SHA when there's no reachable
-	// tag at all, so this still returns something precise rather than
-	// giving up. --dirty flags a checkout with local modifications -
-	// should never happen for a module Terraform itself fetched, but
-	// cheap to surface if it somehow does.
-	describe, err := runGit(ctx, dir, "describe", "--tags", "--always", "--dirty")
-	if err != nil || describe == "" {
-		describe = "unknown"
+// gitTagVersion deliberately omits --always: it must fail (not fall back
+// to a hash) when no tag is reachable, so the caller can move on to the
+// modules.json ?ref= fallback instead of settling for a hash early.
+func gitTagVersion(ctx context.Context, dir string) (string, bool) {
+	out, err := runGit(ctx, dir, "describe", "--tags", "--dirty")
+	if err != nil || out == "" {
+		return "", false
 	}
+	return out, true
+}
 
-	return remote, describe, true
+func gitShortSHA(ctx context.Context, dir string) (string, bool) {
+	out, err := runGit(ctx, dir, "rev-parse", "--short", "HEAD")
+	if err != nil || out == "" {
+		return "", false
+	}
+	return out, true
 }
 
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {
@@ -188,6 +170,61 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// refFromModulesJSON finds the entry in .terraform/modules/modules.json
+// matching absModulePath and returns its raw Source string plus a release
+// version: Version when modules.json populated one (registry sources),
+// otherwise whatever ?ref=... was given in Source (git sources).
+func refFromModulesJSON(root, absModulePath string) (source string, ref string, ok bool) {
+	modulesJSONPath, found := findModulesJSON(root)
+	if !found {
+		return "", "", false
+	}
+
+	raw, err := os.ReadFile(modulesJSONPath)
+	if err != nil {
+		return "", "", false
+	}
+
+	var parsed modulesJSON
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return "", "", false
+	}
+
+	for _, m := range parsed.Modules {
+		dir := m.Dir
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(root, dir)
+		}
+		absDir, err := filepath.Abs(dir)
+		if err != nil {
+			continue
+		}
+		if absDir != absModulePath {
+			continue
+		}
+
+		ref = m.Version
+		if ref == "" {
+			ref = refFromSourceString(m.Source)
+		}
+		return m.Source, ref, true
+	}
+
+	return "", "", false
+}
+
+// refFromSourceString pulls ?ref=... out of a git-style source string,
+// e.g. "git::https://github.com/x/y.git?ref=v0.3.1" -> "v0.3.1". Returns
+// "" if there's no such query parameter (or the string doesn't parse as a
+// URL at all, e.g. a bare local path).
+func refFromSourceString(src string) string {
+	u, err := url.Parse(strings.TrimPrefix(src, "git::"))
+	if err != nil {
+		return ""
+	}
+	return u.Query().Get("ref")
 }
 
 // findModulesJSON walks upward from root looking for
