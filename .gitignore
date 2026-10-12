@@ -1,0 +1,9 @@
+bin/
+.terraform/
+.terraform.lock.hcl
+terraform-provider-tagger
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+.DS_Store
