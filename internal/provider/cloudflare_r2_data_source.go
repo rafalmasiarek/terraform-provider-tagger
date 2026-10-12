@@ -83,9 +83,9 @@ func (d *cloudflareR2DataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	bucketService := r2.NewBucketService(option.WithAPIToken(d.providerData.CloudflareAPIToken))
+	client := cloudflare.NewClient(option.WithAPIToken(d.providerData.CloudflareAPIToken))
 
-	bucket, err := bucketService.Get(ctx, data.BucketName.ValueString(), r2.BucketGetParams{
+	bucket, err := client.R2.Buckets.Get(ctx, data.BucketName.ValueString(), r2.BucketGetParams{
 		AccountID: cloudflare.F(data.AccountID.ValueString()),
 	})
 	if err != nil {
