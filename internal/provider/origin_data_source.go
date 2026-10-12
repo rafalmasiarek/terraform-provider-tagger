@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -70,7 +73,7 @@ func (d *originDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	source, version := detectOrigin(data.ModulePath.ValueString())
+	source, version := detectOrigin(ctx, data.ModulePath.ValueString())
 
 	data.Source = types.StringValue(source)
 	data.Version = types.StringValue(version)
@@ -78,17 +81,22 @@ func (d *originDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// detectOrigin never returns an error - any failure (missing file, bad
-// JSON, no matching entry) falls back to "unknown" for both values, since
-// this is best-effort metadata that must never break a real plan/apply.
+// detectOrigin never returns an error - any failure falls back to
+// "unknown" for both values, since this is best-effort metadata that must
+// never break a real plan/apply.
 //
-// Terraform always runs a provider's process with its working directory
-// set to the root module's directory - that's the one reliable anchor
-// here, not modulePath itself. modules.json's own "Dir" field for every
-// module (local path, git, or registry source alike) is expressed
-// relative to that same root, so both modulePath and each entry's Dir are
-// resolved against os.Getwd(), never against each other.
-func detectOrigin(modulePath string) (source string, version string) {
+// Tries git first: for a git-sourced module, path.module IS the actual
+// checked-out repo directory (Terraform's module installer leaves .git
+// intact), so `git remote get-url origin` + `git describe` there is more
+// precise than modules.json - it reports the exact commit actually
+// checked out, not just whatever ref string the caller wrote, and it also
+// works for the root module itself (which modules.json never describes
+// meaningfully). modules.json is only consulted as a fallback, for cases
+// git can't help with (local path sources outside any repo, registry
+// sources served as plain tarballs with no .git at all, or git missing
+// from PATH - which would be surprising, since Terraform itself already
+// shells out to git to fetch git-sourced modules in the first place).
+func detectOrigin(ctx context.Context, modulePath string) (source string, version string) {
 	const unknown = "unknown"
 
 	root, err := os.Getwd()
@@ -103,6 +111,10 @@ func detectOrigin(modulePath string) (source string, version string) {
 	absModulePath, err = filepath.Abs(absModulePath)
 	if err != nil {
 		return unknown, unknown
+	}
+
+	if src, ver, ok := detectOriginViaGit(ctx, absModulePath); ok {
+		return src, ver
 	}
 
 	modulesJSONPath, ok := findModulesJSON(root)
@@ -142,6 +154,40 @@ func detectOrigin(modulePath string) (source string, version string) {
 	}
 
 	return unknown, unknown
+}
+
+// detectOriginViaGit reports ok=false (never an error) if dir isn't inside
+// a git repo, git isn't on PATH, or either command fails/times out - any
+// of which simply means "try the modules.json fallback instead".
+func detectOriginViaGit(ctx context.Context, dir string) (source string, version string, ok bool) {
+	remote, err := runGit(ctx, dir, "remote", "get-url", "origin")
+	if err != nil || remote == "" {
+		return "", "", false
+	}
+
+	// --always falls back to a short commit SHA when there's no reachable
+	// tag at all, so this still returns something precise rather than
+	// giving up. --dirty flags a checkout with local modifications -
+	// should never happen for a module Terraform itself fetched, but
+	// cheap to surface if it somehow does.
+	describe, err := runGit(ctx, dir, "describe", "--tags", "--always", "--dirty")
+	if err != nil || describe == "" {
+		describe = "unknown"
+	}
+
+	return remote, describe, true
+}
+
+func runGit(ctx context.Context, dir string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // findModulesJSON walks upward from root looking for
