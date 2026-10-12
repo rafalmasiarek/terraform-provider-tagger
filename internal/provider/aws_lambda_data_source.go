@@ -10,9 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// Field names match terraform-null-tagger's new `serverless` variable
-// (runtime, memory_mb, timeout_seconds) - added for the ECS/GitHub-runner
-// webhook+scale-up Lambda this session's architecture work anticipates.
+// Field names match terraform-null-tagger's `serverless` variable
+// (runtime, memory_mb, timeout_seconds, architecture).
 type awsLambdaDataSource struct{}
 
 func NewAWSLambdaDataSource() datasource.DataSource {
@@ -24,6 +23,7 @@ type awsLambdaDataSourceModel struct {
 	Runtime        types.String `tfsdk:"runtime"`
 	MemoryMB       types.Int64  `tfsdk:"memory_mb"`
 	TimeoutSeconds types.Int64  `tfsdk:"timeout_seconds"`
+	Architecture   types.String `tfsdk:"architecture"`
 }
 
 func (d *awsLambdaDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -38,6 +38,7 @@ func (d *awsLambdaDataSource) Schema(ctx context.Context, req datasource.SchemaR
 			"runtime":         schema.StringAttribute{Computed: true, Description: "e.g. nodejs20.x, python3.12."},
 			"memory_mb":       schema.Int64Attribute{Computed: true},
 			"timeout_seconds": schema.Int64Attribute{Computed: true},
+			"architecture":    schema.StringAttribute{Computed: true, Description: "x86_64 or arm64."},
 		},
 	}
 }
@@ -72,6 +73,9 @@ func (d *awsLambdaDataSource) Read(ctx context.Context, req datasource.ReadReque
 	}
 	if out.Timeout != nil {
 		data.TimeoutSeconds = types.Int64Value(int64(*out.Timeout))
+	}
+	if len(out.Architectures) > 0 {
+		data.Architecture = types.StringValue(string(out.Architectures[0]))
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

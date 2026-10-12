@@ -3,18 +3,23 @@ package provider
 import (
 	"context"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// Field names match terraform-null-tagger's `compute` variable exactly
-// (instance_id, instance_type, os, os_version). os_version is
-// deliberately left unset - DescribeInstances has no reliable OS version
-// field without a separate AMI/SSM lookup, and this module does not
-// invent data it can't actually source.
+// Field names match terraform-null-tagger's `compute` variable
+// (instance_id, instance_type, os, architecture, lifecycle, elastic_ip).
+// os_version is deliberately left unset - DescribeInstances has no
+// reliable OS version field without a separate AMI/SSM lookup, and this
+// module does not invent data it can't actually source. desired_capacity-
+// style live fields (Reserved Instance coverage) are left out for the
+// same reason - RI discount allocation is a dynamic, account-wide
+// computation, not a stable per-instance fact.
 type awsEC2DataSource struct{}
 
 func NewAWSEC2DataSource() datasource.DataSource {
@@ -25,6 +30,9 @@ type awsEC2DataSourceModel struct {
 	InstanceID   types.String `tfsdk:"instance_id"`
 	InstanceType types.String `tfsdk:"instance_type"`
 	OS           types.String `tfsdk:"os"`
+	Architecture types.String `tfsdk:"architecture"`
+	Lifecycle    types.String `tfsdk:"lifecycle"`
+	ElasticIP    types.String `tfsdk:"elastic_ip"`
 }
 
 func (d *awsEC2DataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -38,6 +46,9 @@ func (d *awsEC2DataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 			"instance_id":   schema.StringAttribute{Required: true, Description: "EC2 instance ID, e.g. i-0123456789abcdef0."},
 			"instance_type": schema.StringAttribute{Computed: true, Description: "e.g. t3.micro."},
 			"os":            schema.StringAttribute{Computed: true, Description: "Platform details, e.g. \"Linux/UNIX\", \"Red Hat Enterprise Linux\"."},
+			"architecture":  schema.StringAttribute{Computed: true, Description: "x86_64 or arm64."},
+			"lifecycle":     schema.StringAttribute{Computed: true, Description: "on-demand, spot, or scheduled."},
+			"elastic_ip":    schema.StringAttribute{Computed: true, Description: "The Elastic IP associated with this instance, if any. Empty if the instance has no Elastic IP (an ephemeral public IP doesn't count)."},
 		},
 	}
 }
@@ -74,6 +85,27 @@ func (d *awsEC2DataSource) Read(ctx context.Context, req datasource.ReadRequest,
 
 	data.InstanceType = types.StringValue(string(instance.InstanceType))
 	data.OS = types.StringPointerValue(instance.PlatformDetails)
+	data.Architecture = types.StringValue(string(instance.Architecture))
+
+	lifecycle := string(instance.InstanceLifecycle)
+	if lifecycle == "" {
+		lifecycle = "on-demand"
+	}
+	data.Lifecycle = types.StringValue(lifecycle)
+
+	data.ElasticIP = types.StringNull()
+	addrOut, err := client.DescribeAddresses(ctx, &ec2.DescribeAddressesInput{
+		Filters: []ec2types.Filter{
+			{Name: aws.String("instance-id"), Values: []string{instanceID}},
+		},
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to describe Elastic IPs", err.Error())
+		return
+	}
+	if len(addrOut.Addresses) > 0 && addrOut.Addresses[0].PublicIp != nil {
+		data.ElasticIP = types.StringValue(*addrOut.Addresses[0].PublicIp)
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

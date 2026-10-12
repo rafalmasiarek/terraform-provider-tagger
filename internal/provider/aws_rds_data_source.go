@@ -15,9 +15,12 @@ import (
 // files (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/profiles/...), the exact
 // same chain every other AWS-touching tool in this toolchain already
 // relies on. Field names match terraform-null-tagger's `database`
-// variable (engine, engine_version, size, multi_az). storage_gb is
-// deliberately absent - RDS storage autoscaling changes AllocatedStorage
-// outside Terraform, so reading it here would cause a perpetual plan diff.
+// variable (engine, engine_version, size, multi_az, storage_type,
+// storage_encrypted). storage_gb is deliberately absent - RDS storage
+// autoscaling changes AllocatedStorage outside Terraform, so reading it
+// here would cause a perpetual plan diff. storage_type is safe to include
+// even though it lives next to storage_gb - the type itself never changes
+// without an explicit modify-instance call, unlike the allocated size.
 type awsRDSDataSource struct{}
 
 func NewAWSRDSDataSource() datasource.DataSource {
@@ -30,6 +33,8 @@ type awsRDSDataSourceModel struct {
 	EngineVersion        types.String `tfsdk:"engine_version"`
 	Size                 types.String `tfsdk:"size"`
 	MultiAZ              types.Bool   `tfsdk:"multi_az"`
+	StorageType          types.String `tfsdk:"storage_type"`
+	StorageEncrypted     types.Bool   `tfsdk:"storage_encrypted"`
 }
 
 func (d *awsRDSDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -44,10 +49,12 @@ func (d *awsRDSDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 				Required:    true,
 				Description: "RDS DB instance identifier.",
 			},
-			"engine":         schema.StringAttribute{Computed: true, Description: "postgres, mysql, mariadb, ..."},
-			"engine_version": schema.StringAttribute{Computed: true},
-			"size":           schema.StringAttribute{Computed: true, Description: "DB instance class, e.g. db.t3.micro."},
-			"multi_az":       schema.BoolAttribute{Computed: true},
+			"engine":            schema.StringAttribute{Computed: true, Description: "postgres, mysql, mariadb, ..."},
+			"engine_version":    schema.StringAttribute{Computed: true},
+			"size":              schema.StringAttribute{Computed: true, Description: "DB instance class, e.g. db.t3.micro."},
+			"multi_az":          schema.BoolAttribute{Computed: true},
+			"storage_type":      schema.StringAttribute{Computed: true, Description: "gp2, gp3, io1, io2, ..."},
+			"storage_encrypted": schema.BoolAttribute{Computed: true},
 		},
 	}
 }
@@ -87,6 +94,10 @@ func (d *awsRDSDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	data.Size = types.StringPointerValue(instance.DBInstanceClass)
 	if instance.MultiAZ != nil {
 		data.MultiAZ = types.BoolValue(*instance.MultiAZ)
+	}
+	data.StorageType = types.StringPointerValue(instance.StorageType)
+	if instance.StorageEncrypted != nil {
+		data.StorageEncrypted = types.BoolValue(*instance.StorageEncrypted)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
