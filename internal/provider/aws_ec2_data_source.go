@@ -13,7 +13,9 @@ import (
 )
 
 // Field names match terraform-null-tagger's `compute` variable
-// (instance_id, instance_type, os, architecture, lifecycle, elastic_ip).
+// (instance_id, instance_type, os, architecture, instance_lifecycle,
+// elastic_ip). Named instance_lifecycle, not lifecycle - "lifecycle" is a
+// reserved root attribute name in terraform-plugin-framework schemas.
 // os_version is deliberately left unset - DescribeInstances has no
 // reliable OS version field without a separate AMI/SSM lookup, and this
 // module does not invent data it can't actually source. desired_capacity-
@@ -27,12 +29,12 @@ func NewAWSEC2DataSource() datasource.DataSource {
 }
 
 type awsEC2DataSourceModel struct {
-	InstanceID   types.String `tfsdk:"instance_id"`
-	InstanceType types.String `tfsdk:"instance_type"`
-	OS           types.String `tfsdk:"os"`
-	Architecture types.String `tfsdk:"architecture"`
-	Lifecycle    types.String `tfsdk:"lifecycle"`
-	ElasticIP    types.String `tfsdk:"elastic_ip"`
+	InstanceID        types.String `tfsdk:"instance_id"`
+	InstanceType      types.String `tfsdk:"instance_type"`
+	OS                types.String `tfsdk:"os"`
+	Architecture      types.String `tfsdk:"architecture"`
+	InstanceLifecycle types.String `tfsdk:"instance_lifecycle"`
+	ElasticIP         types.String `tfsdk:"elastic_ip"`
 }
 
 func (d *awsEC2DataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -43,12 +45,12 @@ func (d *awsEC2DataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 	resp.Schema = schema.Schema{
 		Description: "EC2 instance metadata, for terraform-null-tagger's compute variable.",
 		Attributes: map[string]schema.Attribute{
-			"instance_id":   schema.StringAttribute{Required: true, Description: "EC2 instance ID, e.g. i-0123456789abcdef0."},
-			"instance_type": schema.StringAttribute{Computed: true, Description: "e.g. t3.micro."},
-			"os":            schema.StringAttribute{Computed: true, Description: "Platform details, e.g. \"Linux/UNIX\", \"Red Hat Enterprise Linux\"."},
-			"architecture":  schema.StringAttribute{Computed: true, Description: "x86_64 or arm64."},
-			"lifecycle":     schema.StringAttribute{Computed: true, Description: "on-demand, spot, or scheduled."},
-			"elastic_ip":    schema.StringAttribute{Computed: true, Description: "The Elastic IP associated with this instance, if any. Empty if the instance has no Elastic IP (an ephemeral public IP doesn't count)."},
+			"instance_id":        schema.StringAttribute{Required: true, Description: "EC2 instance ID, e.g. i-0123456789abcdef0."},
+			"instance_type":      schema.StringAttribute{Computed: true, Description: "e.g. t3.micro."},
+			"os":                 schema.StringAttribute{Computed: true, Description: "Platform details, e.g. \"Linux/UNIX\", \"Red Hat Enterprise Linux\"."},
+			"architecture":       schema.StringAttribute{Computed: true, Description: "x86_64 or arm64."},
+			"instance_lifecycle": schema.StringAttribute{Computed: true, Description: "on-demand, spot, or scheduled."},
+			"elastic_ip":         schema.StringAttribute{Computed: true, Description: "The Elastic IP associated with this instance, if any. Empty if the instance has no Elastic IP (an ephemeral public IP doesn't count)."},
 		},
 	}
 }
@@ -87,11 +89,11 @@ func (d *awsEC2DataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	data.OS = types.StringPointerValue(instance.PlatformDetails)
 	data.Architecture = types.StringValue(string(instance.Architecture))
 
-	lifecycle := string(instance.InstanceLifecycle)
-	if lifecycle == "" {
-		lifecycle = "on-demand"
+	instanceLifecycle := string(instance.InstanceLifecycle)
+	if instanceLifecycle == "" {
+		instanceLifecycle = "on-demand"
 	}
-	data.Lifecycle = types.StringValue(lifecycle)
+	data.InstanceLifecycle = types.StringValue(instanceLifecycle)
 
 	data.ElasticIP = types.StringNull()
 	addrOut, err := client.DescribeAddresses(ctx, &ec2.DescribeAddressesInput{
