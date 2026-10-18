@@ -18,12 +18,13 @@ func NewAWSEIPDataSource() datasource.DataSource {
 }
 
 type awsEIPDataSourceModel struct {
-	AllocationID       types.String `tfsdk:"allocation_id"`
-	Domain             types.String `tfsdk:"domain"`
-	PublicIP           types.String `tfsdk:"public_ip"`
-	AttachmentType     types.String `tfsdk:"attachment_type"`
-	InstanceID         types.String `tfsdk:"instance_id"`
-	NetworkInterfaceID types.String `tfsdk:"network_interface_id"`
+	AllocationID              types.String `tfsdk:"allocation_id"`
+	Domain                    types.String `tfsdk:"domain"`
+	PublicIP                  types.String `tfsdk:"public_ip"`
+	AttachmentType            types.String `tfsdk:"attachment_type"`
+	InstanceID                types.String `tfsdk:"instance_id"`
+	NetworkInterfaceID        types.String `tfsdk:"network_interface_id"`
+	NetworkInterfaceOwnerID   types.String `tfsdk:"network_interface_owner_id"`
 }
 
 func (d *awsEIPDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -57,6 +58,10 @@ func (d *awsEIPDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 			"network_interface_id": schema.StringAttribute{
 				Computed:    true,
 				Description: "ENI ID if attached to a network interface. Empty otherwise.",
+			},
+			"network_interface_owner_id": schema.StringAttribute{
+				Computed:    true,
+				Description: "Account ID that owns the attached ENI. For NAT gateways this is the same account; for cross-account ENIs it differs. Callers can use this to distinguish NAT gateway ENIs from instance ENIs.",
 			},
 		},
 	}
@@ -96,6 +101,7 @@ func (d *awsEIPDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	data.PublicIP = types.StringValue(derefStr(addr.PublicIp))
 	data.InstanceID = types.StringValue(derefStr(addr.InstanceId))
 	data.NetworkInterfaceID = types.StringValue(derefStr(addr.NetworkInterfaceId))
+	data.NetworkInterfaceOwnerID = types.StringValue(derefStr(addr.NetworkInterfaceOwnerId))
 
 	data.AttachmentType = types.StringValue(resolveEIPAttachmentType(addr.InstanceId, addr.NetworkInterfaceId))
 
