@@ -95,8 +95,8 @@ func (d *awsNatGatewayDataSource) Read(ctx context.Context, req datasource.ReadR
 	}
 	data.AllocationID = types.StringValue(allocationID)
 
-	// VPC and AZ come from the subnet
-	data.VpcID = types.StringValue("")
+	// VPC from the NAT gateway itself; AZ from its subnet.
+	data.VpcID = types.StringValue(derefStr(nat.VpcId))
 	data.AvailabilityZone = types.StringValue("")
 	if subnetID != "" {
 		subnetsOut, err := client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
@@ -108,7 +108,6 @@ func (d *awsNatGatewayDataSource) Read(ctx context.Context, req datasource.ReadR
 				"DescribeSubnets failed: "+err.Error(),
 			)
 		} else if len(subnetsOut.Subnets) > 0 {
-			data.VpcID = types.StringValue(derefStr(subnetsOut.Subnets[0].VpcId))
 			data.AvailabilityZone = types.StringValue(derefStr(subnetsOut.Subnets[0].AvailabilityZone))
 		}
 	}
