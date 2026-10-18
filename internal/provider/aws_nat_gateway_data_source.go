@@ -96,20 +96,21 @@ func (d *awsNatGatewayDataSource) Read(ctx context.Context, req datasource.ReadR
 	data.AllocationID = types.StringValue(allocationID)
 
 	// VPC and AZ come from the subnet
+	data.VpcID = types.StringValue("")
+	data.AvailabilityZone = types.StringValue("")
 	if subnetID != "" {
 		subnetsOut, err := client.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{
 			SubnetIds: []string{subnetID},
 		})
-		if err == nil && len(subnetsOut.Subnets) > 0 {
+		if err != nil {
+			resp.Diagnostics.AddWarning(
+				"Could not resolve NAT Gateway subnet",
+				"DescribeSubnets failed: "+err.Error(),
+			)
+		} else if len(subnetsOut.Subnets) > 0 {
 			data.VpcID = types.StringValue(derefStr(subnetsOut.Subnets[0].VpcId))
 			data.AvailabilityZone = types.StringValue(derefStr(subnetsOut.Subnets[0].AvailabilityZone))
-		} else {
-			data.VpcID = types.StringValue("")
-			data.AvailabilityZone = types.StringValue("")
 		}
-	} else {
-		data.VpcID = types.StringValue("")
-		data.AvailabilityZone = types.StringValue("")
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

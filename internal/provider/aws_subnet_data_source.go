@@ -100,7 +100,8 @@ func (d *awsSubnetDataSource) Read(ctx context.Context, req datasource.ReadReque
 	data.AvailabilityZoneID = types.StringValue(derefStr(subnet.AvailabilityZoneId))
 	data.DefaultForAZ = types.BoolValue(derefBool(subnet.DefaultForAz))
 
-	// Find the associated route table via DescribeRouteTables filter
+	// Find the associated route table. Try explicit association first,
+	// fall back to the VPC main route table (covers default VPCs).
 	rtID := ""
 	rtsOut, err := client.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
 		Filters: []ec2types.Filter{
@@ -110,19 +111,32 @@ func (d *awsSubnetDataSource) Read(ctx context.Context, req datasource.ReadReque
 			},
 		},
 	})
-	if err == nil {
-		for _, rt := range rtsOut.RouteTables {
-			for _, assoc := range rt.Associations {
-				if assoc.SubnetId != nil && *assoc.SubnetId == subnetID &&
-					assoc.AssociationState != nil &&
-					string(assoc.AssociationState.State) == "associated" {
-					rtID = derefStr(rt.RouteTableId)
-					break
-				}
-			}
-			if rtID != "" {
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to describe route tables", err.Error())
+		return
+	}
+	for _, rt := range rtsOut.RouteTables {
+		for _, assoc := range rt.Associations {
+			if assoc.SubnetId != nil && *assoc.SubnetId == subnetID &&
+				assoc.AssociationState != nil &&
+				string(assoc.AssociationState.State) == "associated" {
+				rtID = derefStr(rt.RouteTableId)
 				break
 			}
+		}
+		if rtID != "" {
+			break
+		}
+	}
+	if rtID == "" {
+		mainOut, err := client.DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{
+			Filters: []ec2types.Filter{
+				{Name: aws.String("vpc-id"), Values: []string{derefStr(subnet.VpcId)}},
+				{Name: aws.String("association.main"), Values: []string{"true"}},
+			},
+		})
+		if err == nil && len(mainOut.RouteTables) > 0 {
+			rtID = derefStr(mainOut.RouteTables[0].RouteTableId)
 		}
 	}
 	data.RouteTableID = types.StringValue(rtID)
@@ -154,6 +168,10 @@ func resolveEgressType(ctx context.Context, client *ec2.Client, rtID string) str
 				return "nat-gateway"
 			case route.NetworkInterfaceId != nil:
 				return "network-interface"
+			case route.TransitGatewayId != nil:
+				return "transit-gateway"
+			case route.VpcPeeringConnectionId != nil:
+				return "vpc-peering"
 			default:
 				return "none"
 			}
