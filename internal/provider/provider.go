@@ -95,6 +95,11 @@ func (p *taggerProvider) DataSources(ctx context.Context) []func() datasource.Da
 		NewAWSElastiCacheDataSource,
 		NewAWSLambdaDataSource,
 		NewAWSASGDataSource,
+		NewAWSSubnetDataSource,
+		NewAWSVPCDataSource,
+		NewAWSEIPDataSource,
+		NewAWSNatGatewayDataSource,
+		NewAWSIGWDataSource,
 		NewHetznerServerDataSource,
 	}
 }

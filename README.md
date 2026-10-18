@@ -25,6 +25,11 @@ diff on every apply with no config change behind it.
 | `tagger_aws_elasticache` | `cache_cluster_id`\*, `engine`, `engine_version`, `size` | `cache` |
 | `tagger_aws_lambda` | `function_name`\*, `runtime`, `memory_mb`, `timeout_seconds` | `serverless` |
 | `tagger_aws_asg` | `autoscaling_group_name`\*, `min_size`, `max_size`, `launch_template_id`, `launch_template_version` | `autoscaling_group` |
+| `tagger_aws_subnet` | `subnet_id`\*, `vpc_id`, `availability_zone_id`, `route_table_id`, `default_for_az`, `egress_type` | `network` |
+| `tagger_aws_vpc` | `vpc_id`\*, `cidr_block`, `ipv6_cidr_block`, `instance_tenancy` | `network` |
+| `tagger_aws_eip` | `allocation_id`\*, `domain`, `public_ip`, `attachment_type`, `instance_id`, `network_interface_id`, `network_interface_owner_id` | `network` |
+| `tagger_aws_nat_gateway` | `nat_gateway_id`\*, `vpc_id`, `subnet_id`, `availability_zone`, `allocation_id` | `network` |
+| `tagger_aws_igw` | `internet_gateway_id`\*, `vpc_id`, `attached` | `network` |
 
 ### Cloudflare
 
