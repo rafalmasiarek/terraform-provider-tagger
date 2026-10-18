@@ -141,11 +141,11 @@ func gitRemoteOrigin(ctx context.Context, dir string) (string, bool) {
 	return out, true
 }
 
-// gitTagVersion deliberately omits --always: it must fail (not fall back
-// to a hash) when no tag is reachable, so the caller can move on to the
-// modules.json ?ref= fallback instead of settling for a hash early.
+// gitTagVersion returns the most recent reachable tag, stable between
+// releases. --abbrev=0 suppresses the -N-gSHA suffix so the value only
+// changes when a new tag is cut, not on every commit.
 func gitTagVersion(ctx context.Context, dir string) (string, bool) {
-	out, err := runGit(ctx, dir, "describe", "--tags", "--dirty")
+	out, err := runGit(ctx, dir, "describe", "--tags", "--abbrev=0")
 	if err != nil || out == "" {
 		return "", false
 	}
