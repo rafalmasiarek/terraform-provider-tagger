@@ -82,19 +82,27 @@ func (d *originDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 // "unknown", since this is best-effort metadata that must never break a
 // real plan/apply.
 //
-// We resolve dependencies by release version, not by whichever commit
-// happens to be checked out - so version precedence is:
-//  1. An actual reachable git tag (git describe --tags, no --always - a
-//     real release version, not a synthesized one).
-//  2. The ?ref= the caller wrote in modules.json's Source string when
-//     sourcing the module - also a real release version when a tag ref
-//     was used, just not confirmed reachable from HEAD.
-//  3. A bare commit SHA, only as an absolute last resort.
+// Deterministic by design: every value comes from .terraform/modules/modules.json,
+// which Terraform itself generates from the *declared* module source/ref at
+// init time - never from live git state on the actual checked-out
+// directory (git describe, rev-parse, working-tree status). Two machines
+// with the same declared module source/version always produce the same
+// origin, regardless of fetch depth, available tags, or a dirty tree.
 //
-// source is resolved independently: git's own remote origin URL if
-// available (for a git-sourced module, path.module IS the actual
-// checked-out repo directory - Terraform's module installer leaves .git
-// intact), falling back to modules.json's Source string otherwise.
+// Version precedence:
+//  1. modules.json's Version field - populated for registry sources with
+//     the resolved release version.
+//  2. The ?ref= in modules.json's Source string - populated for git
+//     sources pinned to a tag/branch/SHA.
+//  3. "unknown" - a floating git source (no ?ref=) or a local path source
+//     has no declared version to report. This is intentionally never
+//     backfilled from the actual checkout (that's exactly the
+//     non-determinism this data source must avoid).
+//
+// source: modules.json's Source string, falling back to git's remote
+// origin URL only if no modules.json entry exists at all. The remote URL
+// is itself declared configuration (not checkout state), so it doesn't
+// reintroduce non-determinism.
 func detectOrigin(ctx context.Context, modulePath string) (source string, version string) {
 	const unknown = "unknown"
 
@@ -115,19 +123,15 @@ func detectOrigin(ctx context.Context, modulePath string) (source string, versio
 	jsonSource, jsonRef, jsonOK := refFromModulesJSON(root, absModulePath)
 
 	source = unknown
-	if remote, ok := gitRemoteOrigin(ctx, absModulePath); ok {
-		source = remote
-	} else if jsonOK && jsonSource != "" {
+	if jsonOK && jsonSource != "" {
 		source = jsonSource
+	} else if remote, ok := gitRemoteOrigin(ctx, absModulePath); ok {
+		source = remote
 	}
 
 	version = unknown
-	if tag, ok := gitTagVersion(ctx, absModulePath); ok {
-		version = tag
-	} else if jsonOK && jsonRef != "" {
+	if jsonOK && jsonRef != "" {
 		version = jsonRef
-	} else if sha, ok := gitShortSHA(ctx, absModulePath); ok {
-		version = sha
 	}
 
 	return source, version
@@ -135,25 +139,6 @@ func detectOrigin(ctx context.Context, modulePath string) (source string, versio
 
 func gitRemoteOrigin(ctx context.Context, dir string) (string, bool) {
 	out, err := runGit(ctx, dir, "remote", "get-url", "origin")
-	if err != nil || out == "" {
-		return "", false
-	}
-	return out, true
-}
-
-// gitTagVersion returns the most recent reachable tag, stable between
-// releases. --abbrev=0 suppresses the -N-gSHA suffix so the value only
-// changes when a new tag is cut, not on every commit.
-func gitTagVersion(ctx context.Context, dir string) (string, bool) {
-	out, err := runGit(ctx, dir, "describe", "--tags", "--abbrev=0")
-	if err != nil || out == "" {
-		return "", false
-	}
-	return out, true
-}
-
-func gitShortSHA(ctx context.Context, dir string) (string, bool) {
-	out, err := runGit(ctx, dir, "rev-parse", "--short", "HEAD")
 	if err != nil || out == "" {
 		return "", false
 	}
@@ -176,9 +161,14 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 // matching absModulePath and returns its raw Source string plus a release
 // version: Version when modules.json populated one (registry sources),
 // otherwise whatever ?ref=... was given in Source (git sources).
+//
+// modules.json is only ever looked up directly under root (the current
+// working directory Terraform was invoked in) - never discovered by
+// walking upward, which previously risked picking up an unrelated
+// ancestor project's .terraform directory (e.g. in a monorepo).
 func refFromModulesJSON(root, absModulePath string) (source string, ref string, ok bool) {
-	modulesJSONPath, found := findModulesJSON(root)
-	if !found {
+	modulesJSONPath := filepath.Join(root, ".terraform", "modules", "modules.json")
+	if info, err := os.Stat(modulesJSONPath); err != nil || info.IsDir() {
 		return "", "", false
 	}
 
@@ -225,26 +215,4 @@ func refFromSourceString(src string) string {
 		return ""
 	}
 	return u.Query().Get("ref")
-}
-
-// findModulesJSON walks upward from root looking for
-// .terraform/modules/modules.json - bounded, so a malformed/unusual
-// directory layout fails fast instead of walking to filesystem root.
-// Walking at all (rather than only checking root itself) is a safety net
-// for -chdir-style invocations; in the common case it matches on the
-// first iteration.
-func findModulesJSON(root string) (string, bool) {
-	dir := root
-	for i := 0; i < 8; i++ {
-		candidate := filepath.Join(dir, ".terraform", "modules", "modules.json")
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate, true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return "", false
 }
