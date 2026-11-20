@@ -1,5 +1,11 @@
 # terraform-provider-tagger
-![](https://raw.githubusercontent.com/rafalmasiarek/readme-gen/main/banners/.gitkeep)
+
+
+
+
+
+
+
 
 Data sources feeding [terraform-null-tagger](https://github.com/rafalmasiarek/terraform-null-tagger).
 
@@ -62,7 +68,12 @@ data "tagger_origin" "self" {
 
 
 
+
+
+
+
 ## License
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ```text
@@ -79,10 +90,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 
 Source: https://opensource.org/licenses/MIT
 ```
+
+
 See [LICENSE](LICENSE) for full details.
+
+
 ## Authors
 
 - Rafał Masiarek | [website](https://masiarek.pl) | [email](mailto:rafal@masiarek.pl) | [github](https://github.com/rafalmasiarek)
+
+
 
 
 <!-- references -->
