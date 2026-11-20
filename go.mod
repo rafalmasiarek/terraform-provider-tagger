@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.338.4
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.63.3
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.112.1
-	github.com/aws/aws-sdk-go-v2/service/rds v1.130.3
+	github.com/aws/aws-sdk-go-v2/service/rds v1.133.0
 	github.com/cloudflare/cloudflare-go/v4 v4.6.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hetznercloud/hcloud-go/v2 v2.52.0
@@ -22,8 +22,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.6 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.21 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.6 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.25 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.12 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.10.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.38.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.4 // indirect
