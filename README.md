@@ -1,6 +1,8 @@
 # terraform-provider-tagger
+![](https://raw.githubusercontent.com/rafalmasiarek/readme-gen/main/banners/.gitkeep)
 
 Data sources feeding [terraform-null-tagger](https://github.com/rafalmasiarek/terraform-null-tagger).
+
 
 ## Data sources
 
@@ -15,6 +17,7 @@ everything else is computed from the live resource. A field is left out
 on purpose when the cloud provider itself can change it outside Terraform
 (autoscaling, storage autoscaling, ...) - including it would cause a plan
 diff on every apply with no config change behind it.
+
 
 ### AWS
 
@@ -31,11 +34,13 @@ diff on every apply with no config change behind it.
 | `tagger_aws_nat_gateway` | `nat_gateway_id`\*, `vpc_id`, `subnet_id`, `availability_zone`, `allocation_id` | `network` |
 | `tagger_aws_igw` | `internet_gateway_id`\*, `vpc_id`, `attached` | `network` |
 
+
 ### Cloudflare
 
 | Data source | Inputs | `terraform-null-tagger` variable |
 |---|---|---|
 | `tagger_cloudflare_r2` | `account_id`\*, `bucket_name`\*, `storage_class` | `object_storage` |
+
 
 ### Hetzner
 
@@ -43,7 +48,9 @@ diff on every apply with no config change behind it.
 |---|---|---|
 | `tagger_hetzner_server` | `server_id`\*, `instance_id`, `instance_type`, `os`, `os_version` | `compute` |
 
+
 \* - required
+
 
 ## Usage
 
@@ -53,7 +60,31 @@ data "tagger_origin" "self" {
 }
 ```
 
-## Author
 
-[Rafał Masiarek](https://github.com/rafalmasiarek)
 
+## License
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+```text
+The MIT License (MIT)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files, to deal in the Software
+without restriction.
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+Source: https://opensource.org/licenses/MIT
+```
+See [LICENSE](LICENSE) for full details.
+## Authors
+
+- Rafał Masiarek | [website](https://masiarek.pl) | [email](mailto:rafal@masiarek.pl) | [github](https://github.com/rafalmasiarek)
+
+
+<!-- references -->
+
+[repo_link]: https://github.com/rafalmasiarek/terraform-provider-tagger
