@@ -19,12 +19,17 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
+      - name: Load secrets from 1Password
+        uses: rafalmasiarek/load-secrets-action@latest
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          SECRETS_MAP: ${{ vars.SECRETS_MAP }}
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v7
         id: import_gpg
         with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.PASSPHRASE }}
+          gpg_private_key: ${{ env.GPG_PRIVATE_KEY }}
+          passphrase: ${{ env.PASSPHRASE }}
       - name: Install goreleaser
         uses: goreleaser/goreleaser-action@v7
         with:
@@ -34,4 +39,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
-          PASSPHRASE: ${{ secrets.PASSPHRASE }}
+          PASSPHRASE: ${{ env.PASSPHRASE }}
