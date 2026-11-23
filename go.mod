@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.338.4
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.63.3
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.112.1
-	github.com/aws/aws-sdk-go-v2/service/rds v1.133.0
+	github.com/aws/aws-sdk-go-v2/service/rds v1.134.0
 	github.com/cloudflare/cloudflare-go/v4 v4.6.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hetznercloud/hcloud-go/v2 v2.52.0
