@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.82.0
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.338.4
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.63.3
-	github.com/aws/aws-sdk-go-v2/service/lambda v1.112.1
+	github.com/aws/aws-sdk-go-v2/service/lambda v1.118.0
 	github.com/aws/aws-sdk-go-v2/service/rds v1.133.0
 	github.com/cloudflare/cloudflare-go/v4 v4.6.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
@@ -16,7 +16,7 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.22 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.27 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.12 // indirect
